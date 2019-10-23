@@ -87,7 +87,7 @@ section
           --         : by rw set.insert
           -- ... = set.insert y (set.insert x s)
           --         : by rw set.insert
-  -- `Explicit' proof of set_swap
+  -- 'Explicit' proof of set_swap
   example
     (s : set α) (x y : α)
       : set.insert x (set.insert y s) = set.insert y (set.insert x s)
@@ -103,12 +103,12 @@ section
         by {rw set.insert, from this},
       have _2 : { a | a = y ∨ a = x ∨ a ∈ s } = set.insert y (set.insert x s),
         from eq.symm this,
-      -- Here, we can just use
-      --   show { a | a = x ∨ a = y ∨ a ∈ s } = { a | a = y ∨ a = x ∨ a ∈ s },
-      --     by {congr, funext, from propext or.left_comm}
-      -- But is it sufficiently clear how Lean fills in the following steps?
       have : { a | a = x ∨ a = y ∨ a ∈ s } = { a | a = y ∨ a = x ∨ a ∈ s },
         by {congr, funext, from propext or.left_comm},
+      -- Here, we can just use
+      --   show set.insert x (set.insert y s) = set.insert y (set.insert x s),
+      --     from eq.trans _1 this,
+      -- But is it sufficiently clear how Lean fills in the following steps?
       have : set.insert x (set.insert y s) = { a | a = y ∨ a = x ∨ a ∈ s },
         from eq.trans _1 this,
       show set.insert x (set.insert y s) = set.insert y (set.insert x s),
