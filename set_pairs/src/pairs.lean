@@ -262,6 +262,70 @@ section
       done
     end
 
+  lemma set_eq_imp_mem_preserve
+    {s₁ s₂ : set α} {x : α} : s₁ = s₂ → x ∈ s₁ → x ∈ s₂
+  :=
+    begin
+      intros,
+      have : s₁ ⊆ s₂, from set_eq_imp_subset_left ‹s₁ = s₂›,
+      show x ∈ s₂, from ‹s₁ ⊆ s₂› ‹x ∈ s₁›,
+      done
+    end
+
+  lemma two_element_set_case_split
+    {x y z : α} : z ∈ ({x, y} : set α) → z = x ∨ z = y
+  := 
+    begin
+
+      have : ∀ { p q : Prop }, p ∨ q ∨ false ↔ p ∨ q,
+        by {
+          intros, split,
+          show p ∨ q ∨ false → p ∨ q, by
+            begin
+              assume : p ∨ q ∨ false,
+              cases this,
+                -- assuming p holds
+                case or.inl {from or.inl ‹p›},
+                -- assuming q ∨ false holds
+                case or.inr {
+                  cases ‹q ∨ false›,
+                    -- asusming q holds
+                    case or.inl {from or.inr ‹q›},
+                    -- assuming false
+                    case or.inr {by {exfalso, assumption}},
+                },
+            end,
+          show p ∨ q → p ∨ q ∨ false, by 
+            begin
+              assume : p ∨ q,
+              have : (p ∨ q) ∨ false, from or.inl this,
+              show p ∨ q ∨ false, from (iff.elim_left or.assoc) this,
+            end,
+          done
+        },
+      rename this absorb_false,
+
+      have : {x, y} = { b | b = x ∨ b = y },
+        by calc
+          {x, y}
+            --  = { b | b = y ∨ b = x ∨ b ∈ ∅ } : by refl ... 
+                = { b | b = y ∨ b = x ∨ false }  : by refl
+            ... = { b | b = y ∨ b = x } 
+                    : by {congr, funext, from propext absorb_false}
+            ... = { b | b = x ∨ b = y}
+                    : by {congr, funext, from propext or.comm},
+
+      assume : z ∈ {x, y},
+
+      have : z ∈ { b | b = x ∨ b = y },
+        from set_eq_imp_mem_preserve ‹{x, y} = { b | b = x ∨ b = y }› this,
+
+      show z = x ∨ z = y, from this,
+
+      done
+
+    end
+
 end
 
 section
@@ -278,15 +342,69 @@ section
   :=
     begin
       intro,
-      have : A = {{a₁}, {a₁, a₂}}, by rw [A, pair],
-      have : A = set.insert {a₁, a₂} {{a₁}}, by {rw set.insert, from this},
-      -- { s | s = {a₁} ∨ s ∈ {{a₁, a₂}}}, by {rw set.insert, from this}
-      -- assume : ({{a₁}, {a₁, a₂}} : set (set α)) = {{b₁},{b₁,b₂}},
-      -- let A : set (set α) := {{a₁}, {a₁, a₂}} in
-      -- let B : set (set α) := {{b₁}, {b₁, b₂}} in
-      -- have ({ a₁ } : set α) ∈ A 
 
-      sorry
+      -- It doesn't matter which order we enumerate the elements of the pairs
+      have : ({{a₁}, {a₁, a₂}} : set (set α)) = {{a₁, a₂}, {a₁}},
+        by apply set_swap,
+      have : ({{b₁}, {b₁, b₂}} : set (set α)) = {{b₁, b₂}, {b₁}},
+        by apply set_swap,
+
+      -- We derive some basic facts about the members of A
+      have : A = {{a₁}, {a₁, a₂}}, by rw [A, pair],
+
+      have : {a₁} ∈ A, by {
+        apply eq.substr ‹A = {{a₁}, {a₁, a₂}}›,
+        apply eq.substr ‹{{a₁}, {a₁, a₂}} = {{a₁, a₂}, {a₁}}›,
+        apply mem_insert,
+        done
+      },
+
+      have : {a₁, a₂} ∈ A, by {
+        apply eq.substr ‹A = {{a₁}, {a₁, a₂}}›,
+        apply mem_insert,
+      },
+
+      -- We derive some basic facts about the members of B
+      have : B = {{b₁}, {b₁, b₂}}, by rw [B, pair],
+
+      have : {b₁} ∈ B, by {
+        apply eq.substr ‹B = {{b₁}, {b₁, b₂}}›,
+        apply eq.substr ‹{{b₁}, {b₁, b₂}} = {{b₁, b₂}, {b₁}}›,
+        apply mem_insert,
+        done
+      },
+
+      have : {b₁, b₂} ∈ B, by {
+        apply eq.substr ‹B = {{b₁}, {b₁, b₂}}›,
+        apply mem_insert,
+      },
+
+      -- A and B are subsets of one another
+      have : A ⊆ B, by {apply set_eq_imp_subset_left, from ‹A = B›},
+      have : B ⊆ A, by {apply set_eq_imp_subset_right, from ‹A = B›},
+
+      -- Therefore
+      have : {a₁} ∈ B, from ‹A ⊆ B› ‹{a₁} ∈ A›,
+      have : {a₁} ∈ {{b₁}, {b₁, b₂}},
+        by {apply eq.subst ‹B = {{b₁}, {b₁, b₂}}›, from this},
+      have : {a₁} = {b₁} ∨ {a₁} = {b₁, b₂},
+        by {apply two_element_set_case_split (set α), from this},
+
+      -- Now there are two possibilities
+      cases this,
+
+      -- the case that {a₁} = {b₁}
+      case or.inl {
+        sorry
+      },
+
+      -- the case that {a₁} = {b₁, b₂}
+      case or.inr {
+        sorry
+      },
+
+      done
+
     end
 
 
