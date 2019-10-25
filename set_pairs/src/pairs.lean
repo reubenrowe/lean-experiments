@@ -68,50 +68,70 @@ section
     {s : set α} {x y : α}
       : set.insert x (set.insert y s) = set.insert y (set.insert x s)
   :=
+      -- Note, refl is the tactic that checks definitional equality
       calc
         set.insert x (set.insert y s)
-              = { a | a = x ∨ a ∈ (set.insert y s)}
-                  : by rw set.insert
-          ... = { a | a = x ∨ a ∈ { b | b = y ∨ b ∈ s}}
-                  : by rw set.insert
-          ... = { a | a = x ∨ a = y ∨ a ∈ s }
-                  : by congr
+          -- Don't need these intermediate steps
+          --     = { a | a = x ∨ a ∈ (set.insert y s)}
+          --         : by refl
+          -- ... = { a | a = x ∨ a ∈ { b | b = y ∨ b ∈ s}}
+          --         : by refl
+          -- ... 
+              = { a | a = x ∨ a = y ∨ a ∈ s }
+                  : by refl
+
+          -- The key step
           ... = { a | a = y ∨ a = x ∨ a ∈ s }
+                -- This is really set_of (λ a, a = y ∨ a = x ∨ a ∈ s)
                   : by {congr, funext, from propext or.left_comm}
-          -- For some reason, Lean fills in the rest, and it is incorrect to
-          --   try and fill it in ourselves.
+
+          -- Again, we don't need these intermediate steps
           -- ... = { a | a = y ∨ a ∈ { b | b = x ∨ b ∈ s}}
-          --         : by congr
+          --         : by refl
           -- ... = { a | a = y ∨ a ∈ (set.insert x s)}
-          --         : by rw set.insert
-          -- ... = set.insert y (set.insert x s)
-          --         : by rw set.insert
+          --         : by refl
+
+          -- And Lean can even fill in the second half of the calculation
+          -- automatically.
+          ... = set.insert y (set.insert x s)
+                  : by refl
   -- 'Explicit' proof of set_swap
   example
     {s : set α} {x y : α}
       : set.insert x (set.insert y s) = set.insert y (set.insert x s)
   :=
     begin
-      have : set.insert x (set.insert y s) = { a | a = x ∨ a ∈ (set.insert y s) },
-        by rw set.insert,
-      have _1: set.insert x (set.insert y s) = { a | a = x ∨ a = y ∨ a ∈ s },
-        by {rw set.insert, from this},
-      have : set.insert y (set.insert x s) = { a | a = y ∨ a ∈ (set.insert x s) },
-        by rw set.insert,
-      have : set.insert y (set.insert x s) = { a | a = y ∨ a = x ∨ a ∈ s },
-        by {rw set.insert, from this},
+      have _1 : set.insert x (set.insert y s) = { a | a = x ∨ a = y ∨ a ∈ s },
+        by refl,
       have _2 : { a | a = y ∨ a = x ∨ a ∈ s } = set.insert y (set.insert x s),
-        from eq.symm this,
-      have : { a | a = x ∨ a = y ∨ a ∈ s } = { a | a = y ∨ a = x ∨ a ∈ s },
+        by refl,
+      have _3 : { a | a = x ∨ a = y ∨ a ∈ s } = { a | a = y ∨ a = x ∨ a ∈ s },
         by {congr, funext, from propext or.left_comm},
-      -- Here, we can just use
-      --   show set.insert x (set.insert y s) = set.insert y (set.insert x s),
-      --     from eq.trans _1 this,
-      -- But is it sufficiently clear how Lean fills in the following steps?
-      have : set.insert x (set.insert y s) = { a | a = y ∨ a = x ∨ a ∈ s },
-        from eq.trans _1 this,
+
+      -- Here, we can just tell Lean to use facts in the context, and it
+      -- fills in the necessary chaining of equalities:
+
+      -- show set.insert x (set.insert y s) = set.insert y (set.insert x s),
+      --   by {assumption},
+
+      -- We can also use the tactic language to manipulate the goal and
+      -- apply facts one at a time:
+
+      -- show set.insert x (set.insert y s) = set.insert y (set.insert x s),
+      --   by {transitivity, assumption, transitivity, exact this, assumption},
+
+      -- But although this makes it clear which reasoning principles are being
+      -- used, it isn't at all obvious how these are applied.
+
+      -- Maybe this is better?:
       show set.insert x (set.insert y s) = set.insert y (set.insert x s),
-        from eq.trans this _2,
+        -- from eq.trans (eq.trans _1 _3) _2,
+        from eq.trans 
+              (eq.trans
+                ‹set.insert x (set.insert y s) = { a | a = x ∨ a = y ∨ a ∈ s }›
+                ‹{ a | a = x ∨ a = y ∨ a ∈ s } = { a | a = y ∨ a = x ∨ a ∈ s }›)
+                ‹{ a | a = y ∨ a = x ∨ a ∈ s } = set.insert y (set.insert x s)›,
+
       done
     end
 
