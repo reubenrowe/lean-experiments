@@ -411,6 +411,24 @@ section
   def A := pair a₁ a₂
   def B := pair b₁ b₂
 
+  -- We will need the following collapsing lemma
+  lemma collapse
+    { x y : α } : x = y → ({{x}, {x, y}} : set (set α)) = {{y}}
+  :=
+    begin
+      assume : x = y,
+      calc
+        ({{x}, {x, y}} : set (set α))
+              = {{y}, {y, y}} : by {apply eq.subst ‹x = y›, refl}
+          ... = set.insert {y, y} ({{y}}) : by refl
+          ... = set.insert {y} ({{y}})
+                  : (congr_fun 
+                      (congr_arg set.insert (duplicate_to_singleton α)))
+                      {{y}}
+          ... = {{y}, {y}} : by refl
+          ... = {{y}} : by apply duplicate_to_singleton,
+    end
+
   theorem adequacy :
     A = B → a₁ = b₁ ∧ a₂ = b₂
   :=
@@ -428,11 +446,14 @@ section
         by apply set_swap,
 
       -- We derive some basic facts about (the members of) the members of A
-      have : A = {{a₁}, {a₁, a₂}}, by rw [A, pair],
+      have : A = {{a₁}, {a₁, a₂}}, by refl,
 
       have : {a₁} ∈ A, by {
-        apply eq.substr ‹A = {{a₁}, {a₁, a₂}}›,
-        apply eq.substr ‹{{a₁}, {a₁, a₂}} = {{a₁, a₂}, {a₁}}›,
+        -- since {a₁} ∈ {{a₁, a₂}, {a₁}}, as A = {{a₁, a₂}, {a₁}},
+        apply eq.substr 
+          (eq.trans ‹A = {{a₁}, {a₁, a₂}}›
+                        ‹{{a₁}, {a₁, a₂}} = {{a₁, a₂}, {a₁}}›),
+        -- using the mem_insert lemma
         apply mem_insert,
         done
       },
@@ -453,11 +474,14 @@ section
       have : a₂ ∈ ({a₁, a₂} : set α), by apply mem_insert,
 
       -- We derive some basic facts about (the members of) the members of B
-      have : B = {{b₁}, {b₁, b₂}}, by rw [B, pair],
+      have : B = {{b₁}, {b₁, b₂}}, by refl,
 
       have : {b₁} ∈ B, by {
-        apply eq.substr ‹B = {{b₁}, {b₁, b₂}}›,
-        apply eq.substr ‹{{b₁}, {b₁, b₂}} = {{b₁, b₂}, {b₁}}›,
+        -- since {b₁} ∈ {{b₁, b₂}, {b₁}}, as B = {{b₁, b₂}, {b₁}},
+        apply eq.substr 
+          (eq.trans ‹B = {{b₁}, {b₁, b₂}}›
+                        ‹{{b₁}, {b₁, b₂}} = {{b₁, b₂}, {b₁}}›),
+        -- using the mem_insert lemma
         apply mem_insert,
         done
       },
@@ -484,17 +508,101 @@ section
       have : {a₁} ∈ B, from ‹A ⊆ B› ‹{a₁} ∈ A›,
       have : {a₁} ∈ {{b₁}, {b₁, b₂}},
         by {apply eq.subst ‹B = {{b₁}, {b₁, b₂}}›, from this},
-      have : {a₁} = {b₁} ∨ {a₁} = {b₁, b₂},
-        by {apply two_element_set_case_split (set α), from this},
 
       -- Now there are two possibilities
-      cases this,
+      cases two_element_set_case_split (set α) this,
 
       -- the case that {a₁} = {b₁}
       case or.inl {
+        have : a₁ ∈ {a₁}, by apply singleton_set_mem,
+        have : a₁ ∈ ({b₁} : set α), 
+          by {apply set_eq_imp_mem_preserve α ‹{a₁} = {b₁}›, from this},
+        have : a₁ = b₁, by {apply singleton_set_case_split, from this},
 
+        -- We have to show both a₁ = b₁ and a₂ = b₂
+        split,
+        -- We already have the left-hand conjunct
+        show a₁ = b₁, from this,
 
-        sorry
+        have : {a₁, a₂} ∈ {{b₁}, {b₁, b₂}},
+          by {apply eq.subst ‹B = {{b₁}, {b₁, b₂}}›,
+                from ‹A ⊆ B› ‹{a₁, a₂} ∈ A›},
+
+        cases two_element_set_case_split (set α) this,
+
+        -- The case that {a₁, a₂} = {b₁}
+        case or.inl {
+          have : a₂ = b₁, 
+            by {
+              apply singleton_set_case_split,
+              apply set_eq_imp_mem_preserve α ‹{a₁, a₂} = {b₁}›,
+              from ‹a₂ ∈ {a₁, a₂}›
+            },
+          have : a₁ = a₂, from eq.trans ‹a₁ = b₁› (eq.symm this),
+          have : A = {{a₂}},
+            by calc
+              A     = {{a₁}, {a₁, a₂}} : by refl
+                ... = {{a₂}} : by {apply collapse, from this},
+          have : {b₁, b₂} = {a₂},
+            by {
+              -- since {b₁, b₂} ∈ {{a₂}}
+              apply singleton_set_case_split,
+              -- since A = {{a₂}}
+              apply eq.subst this,
+              -- and {b₁, b₂} ∈ B and B ⊆ A
+              from ‹B ⊆ A› ‹{b₁, b₂} ∈ B›,
+            },
+          have : b₂ = a₂,
+            by {
+              -- since b₂ in {a₂}
+              apply singleton_set_case_split,
+              -- since we have just shown {b₁, b₂} = {a₂}
+              apply set_eq_imp_mem_preserve α this,
+              -- and also we have that b₂ ∈ {b₁, b₂}
+              from ‹b₂ ∈ {b₁, b₂}›
+            },
+          -- Thus we have the right-hand conjunct
+          show a₂ = b₂, by {symmetry, from this},
+          done
+        },
+
+        -- The case that {a₁, a₂} = {b₁, b₂}
+        case or.inr {
+          have : {b₁, b₂} = {a₁, a₂}, by {symmetry, from ‹{a₁, a₂} = {b₁, b₂}›},
+          have : b₂ ∈ {a₁, a₂},
+            by {apply set_eq_imp_mem_preserve, from this, from ‹b₂ ∈ {b₁, b₂}›},
+          -- Now, again, we have two further cases
+          cases two_element_set_case_split α this,
+            -- The case that b₂ = a₁
+            case or.inl {
+              have : b₁ = b₂,
+                from eq.trans (eq.symm ‹a₁ = b₁›) (eq.symm ‹b₂ = a₁›),
+              have : {a₁, a₂} = {b₂},
+                by calc
+                  {a₁, a₂} = {b₁, b₂} : by assumption
+                       ... = {b₂, b₂} : by {apply eq.subst ‹b₁ = b₂›, refl}
+                       ... = {b₂}     : by {apply remove_duplicates},
+              -- Therefore, we can show the right-hand conjunct
+              show a₂ = b₂,
+                by {
+                  -- since a₂ ∈ {b₂}
+                  apply singleton_set_case_split,
+                  -- since we have just show that {a₁, a₂} = {b₂}
+                  apply set_eq_imp_mem_preserve α this,
+                  -- and also we have a₂ ∈ {a₁, a₂}
+                  from ‹a₂ ∈ {a₁, a₂}›,
+                },
+                done
+            },
+            -- The case that b₂ = a₂
+            case or.inr {
+              -- immediate
+              show a₂ = b₂, by {symmetry, from ‹b₂ = a₂›}, done
+            },
+           done
+        },
+
+        done
       },
 
       -- the case that {a₁} = {b₁, b₂}
@@ -522,14 +630,7 @@ section
         have : B = {{b₂}},
           by calc
             B     = {{b₁}, {b₁, b₂}} : by refl
-              ... = {{b₂}, {b₂, b₂}} : by {apply eq.subst ‹b₁ = b₂›, refl}
-              ... = set.insert {b₂, b₂} ({{b₂}}) : by refl
-              ... = set.insert {b₂} ({{b₂}})
-                      : (congr_fun 
-                          (congr_arg set.insert (duplicate_to_singleton α)))
-                          {{b₂}}
-              ... = {{b₂}, {b₂}} : by refl
-              ... = {{b₂}} : by apply duplicate_to_singleton,
+              ... = {{b₂}} : by {apply collapse, from this},
         have : {a₁, a₂} ∈ B, 
           by {apply set_eq_imp_mem_preserve, from ‹A = B›, from ‹{a₁, a₂} ∈ A›},
         have : {a₁, a₂} ∈ {{b₂}}, by {apply eq.subst ‹B = {{b₂}}›, from this},
@@ -546,6 +647,5 @@ section
       done
 
     end
-
 
 end
