@@ -532,11 +532,13 @@ section
               ... = {{b₂}} : by apply duplicate_to_singleton,
         have : {a₁, a₂} ∈ B, 
           by {apply set_eq_imp_mem_preserve, from ‹A = B›, from ‹{a₁, a₂} ∈ A›},
-        have : {a₁, a₂} ∈ {{b₂}}, by {apply eq.subst ‹B ={{b₂}}›, from this},
+        have : {a₁, a₂} ∈ {{b₂}}, by {apply eq.subst ‹B = {{b₂}}›, from this},
         have : {a₁, a₂} = {b₂}, by {apply singleton_set_case_split, from this},
         have : {a₁, a₂} ⊆ ({b₂} : set α),
           by {apply set_eq_imp_subset_left, from this},
         have : a₂ ∈ {b₂}, from this ‹a₂ ∈ {a₁, a₂}›,
+
+        -- This gives the right-hand conjunct
         show a₂ = b₂, by {apply singleton_set_case_split, from this},
         done
       },
