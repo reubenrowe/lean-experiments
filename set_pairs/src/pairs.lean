@@ -1,5 +1,69 @@
 universe u
 
+namespace or
+
+  section
+    
+    parameters { p q r : Prop }
+
+    lemma right_neutral
+      {p : Prop} : p ∨ false ↔ p
+    :=
+      begin
+        split,
+        show p → p ∨ false, from or.intro_left false,
+        show p ∨ false → p, by {
+          assume : p ∨ false,
+          cases this,
+            case or.inl {from ‹p›},
+            case or.inr {by {exfalso, assumption}}
+        },
+        done
+      end
+
+    lemma idempotent
+      { p : Prop } : p ∨ p ↔ p
+    := 
+      begin
+        split,
+        show p → p ∨ p, by {assume : p, from or.inl ‹p›},
+        show p ∨ p → p, 
+          by {
+            assume : p ∨ p, 
+            cases this,
+              case or.inl {from ‹p›},
+              case or.inr {from ‹p›}
+          },
+          done
+      end
+
+    lemma equiv_left
+      { p q r : Prop } : (p ↔ q) → (p ∨ r ↔ q ∨ r)
+    :=
+      begin
+        assume : p ↔ q,
+        split,
+        show p ∨ r → q ∨ r,
+          by {
+            assume : p ∨ r,
+            cases this,
+              case or.inl {from or.inl (iff.elim_left ‹p ↔ q› ‹p›)},
+              case or.inr {from or.inr ‹r›},
+          },
+        show q ∨ r → p ∨ r,
+          by {
+            assume : q ∨ r,
+            cases this,
+              case or.inl {from or.inl (iff.elim_right ‹p ↔ q› ‹q›)},
+              case or.inr {from or.inr ‹r›},
+          },
+        done
+      end
+
+  end
+
+end or
+
 section
 
   parameters (α : Type u) (x y : α)
@@ -272,46 +336,40 @@ section
       done
     end
 
+  lemma singleton_set_case_split
+    {x y : α} : y ∈ ({x} : set α) → y = x
+  :=
+    begin
+      intros,
+      have : { x } = { y | y = x }, by 
+        calc
+          { x } 
+             -- = { y | y = x ∨ y ∈ ∅ } : by refl ...
+                = { y | y = x ∨ false }
+                    : by refl
+            ... = { y | y = x }
+                    : by {congr, funext, from propext or.right_neutral},
+
+      have : y ∈ { y | y = x },
+        from set_eq_imp_mem_preserve this ‹y ∈ {x}›,
+      show y = x, from this,
+      done
+    end
+
   lemma two_element_set_case_split
     {x y z : α} : z ∈ ({x, y} : set α) → z = x ∨ z = y
   := 
     begin
-
-      have : ∀ { p q : Prop }, p ∨ q ∨ false ↔ p ∨ q,
-        by {
-          intros, split,
-          show p ∨ q ∨ false → p ∨ q, by
-            begin
-              assume : p ∨ q ∨ false,
-              cases this,
-                -- assuming p holds
-                case or.inl {from or.inl ‹p›},
-                -- assuming q ∨ false holds
-                case or.inr {
-                  cases ‹q ∨ false›,
-                    -- asusming q holds
-                    case or.inl {from or.inr ‹q›},
-                    -- assuming false
-                    case or.inr {by {exfalso, assumption}},
-                },
-            end,
-          show p ∨ q → p ∨ q ∨ false, by 
-            begin
-              assume : p ∨ q,
-              have : (p ∨ q) ∨ false, from or.inl this,
-              show p ∨ q ∨ false, from (iff.elim_left or.assoc) this,
-            end,
-          done
-        },
-      rename this absorb_false,
 
       have : {x, y} = { b | b = x ∨ b = y },
         by calc
           {x, y}
             --  = { b | b = y ∨ b = x ∨ b ∈ ∅ } : by refl ... 
                 = { b | b = y ∨ b = x ∨ false }  : by refl
+            ... = { b | (b = y ∨ b = x) ∨ false }
+                    : by {congr, funext, from eq.symm (propext or.assoc)}
             ... = { b | b = y ∨ b = x } 
-                    : by {congr, funext, from propext absorb_false}
+                    : by {congr, funext, from propext or.right_neutral}
             ... = { b | b = x ∨ b = y}
                     : by {congr, funext, from propext or.comm},
 
@@ -325,6 +383,22 @@ section
       done
 
     end
+
+  lemma remove_duplicates
+    { s : set α } { x : α } : set.insert x (set.insert x s) = set.insert x s
+  := 
+    by calc
+      set.insert x (set.insert x s)
+           = { z | z = x ∨ z = x ∨ z ∈ s } : by refl
+       ... = { z | (z = x ∨ z = x) ∨ z ∈ s } 
+                : by {congr, funext, from eq.symm (propext or.assoc)}
+       ... = { z | z = x ∨ z ∈ s }
+                : by {congr, funext, from propext (or.equiv_left or.idempotent)}
+       ... = set.insert x s : by refl
+
+  lemma duplicate_to_singleton
+    { x : α } : {x, x} = ({x} : set α)
+  := by apply remove_duplicates
 
 end
 
@@ -341,15 +415,19 @@ section
     A = B → a₁ = b₁ ∧ a₂ = b₂
   :=
     begin
-      intro,
+      assume : A = B,
 
-      -- It doesn't matter which order we enumerate the elements of the pairs
+      -- It doesn't matter in which order we enumerate the elements of sets
       have : ({{a₁}, {a₁, a₂}} : set (set α)) = {{a₁, a₂}, {a₁}},
         by apply set_swap,
       have : ({{b₁}, {b₁, b₂}} : set (set α)) = {{b₁, b₂}, {b₁}},
         by apply set_swap,
+      have : ({a₁, a₂} : set α) = {a₂, a₁},
+        by apply set_swap,
+      have : ({b₁, b₂} : set α) = {b₂, b₁},
+        by apply set_swap,
 
-      -- We derive some basic facts about the members of A
+      -- We derive some basic facts about (the members of) the members of A
       have : A = {{a₁}, {a₁, a₂}}, by rw [A, pair],
 
       have : {a₁} ∈ A, by {
@@ -362,9 +440,19 @@ section
       have : {a₁, a₂} ∈ A, by {
         apply eq.substr ‹A = {{a₁}, {a₁, a₂}}›,
         apply mem_insert,
+        done
       },
 
-      -- We derive some basic facts about the members of B
+      have : a₁ ∈ {a₁, a₂}, by {
+        apply eq.substr ‹{a₁, a₂} = {a₂, a₁}›,
+        apply mem_insert,
+        done
+      },
+
+        -- We need the set α type ascription here
+      have : a₂ ∈ ({a₁, a₂} : set α), by apply mem_insert,
+
+      -- We derive some basic facts about (the members of) the members of B
       have : B = {{b₁}, {b₁, b₂}}, by rw [B, pair],
 
       have : {b₁} ∈ B, by {
@@ -379,7 +467,16 @@ section
         apply mem_insert,
       },
 
-      -- A and B are subsets of one another
+      have : b₁ ∈ {b₁, b₂}, by {
+        apply eq.substr ‹{b₁, b₂} = {b₂, b₁}›,
+        apply mem_insert,
+        done
+      },
+
+        -- We need the set α type ascription here
+      have : b₂ ∈ ({b₁, b₂} : set α), by apply mem_insert,
+
+      -- Since A = B, A and B are subsets of one another
       have : A ⊆ B, by {apply set_eq_imp_subset_left, from ‹A = B›},
       have : B ⊆ A, by {apply set_eq_imp_subset_right, from ‹A = B›},
 
@@ -395,12 +492,53 @@ section
 
       -- the case that {a₁} = {b₁}
       case or.inl {
+
+
         sorry
       },
 
       -- the case that {a₁} = {b₁, b₂}
       case or.inr {
-        sorry
+        have : ({b₁, b₂} : set α) ⊆ {a₁},
+          by {apply set_eq_imp_subset_right, from ‹{a₁} = {b₁, b₂}›},
+        have : b₁ ∈ {a₁}, 
+          by {apply set_eq_imp_subset_left,
+              from eq.symm ‹{a₁} = {b₁, b₂}›, from ‹b₁ ∈ {b₁, b₂}›},
+        have : b₁ = a₁,
+          by {apply singleton_set_case_split, from this},
+
+        -- We have to show both a₁ = b₁ and a₂ = b₂
+        split,
+        -- We already have the left-hand conjunct
+        show a₁ = b₁, by {symmetry, from this},
+
+        -- Now for the right-hand conjunct
+        have : b₂ ∈ {a₁},
+          by {apply set_eq_imp_subset_left,
+              from eq.symm ‹{a₁} = {b₁, b₂}›, from ‹b₂ ∈ {b₁, b₂}›},
+        have : a₁ = b₂,
+          by {symmetry, apply singleton_set_case_split, from this},
+        have : b₁ = b₂, by {transitivity, from ‹b₁ = a₁›, from ‹a₁ = b₂›},
+        have : B = {{b₂}},
+          by calc
+            B     = {{b₁}, {b₁, b₂}} : by refl
+              ... = {{b₂}, {b₂, b₂}} : by {apply eq.subst ‹b₁ = b₂›, refl}
+              ... = set.insert {b₂, b₂} ({{b₂}}) : by refl
+              ... = set.insert {b₂} ({{b₂}})
+                      : (congr_fun 
+                          (congr_arg set.insert (duplicate_to_singleton α)))
+                          {{b₂}}
+              ... = {{b₂}, {b₂}} : by refl
+              ... = {{b₂}} : by apply duplicate_to_singleton,
+        have : {a₁, a₂} ∈ B, 
+          by {apply set_eq_imp_mem_preserve, from ‹A = B›, from ‹{a₁, a₂} ∈ A›},
+        have : {a₁, a₂} ∈ {{b₂}}, by {apply eq.subst ‹B ={{b₂}}›, from this},
+        have : {a₁, a₂} = {b₂}, by {apply singleton_set_case_split, from this},
+        have : {a₁, a₂} ⊆ ({b₂} : set α),
+          by {apply set_eq_imp_subset_left, from this},
+        have : a₂ ∈ {b₂}, from this ‹a₂ ∈ {a₁, a₂}›,
+        show a₂ = b₂, by {apply singleton_set_case_split, from this},
+        done
       },
 
       done
