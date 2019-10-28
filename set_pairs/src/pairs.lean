@@ -423,9 +423,14 @@ section
       have : a₁ = b₁, by {apply and.elim_left, assumption},
       have : a₂ = b₂, by {apply and.elim_right, assumption},
       calc
-        A     = {{a₁}, {a₁, a₂}} : by refl
+        A     = {{a₁}, {a₁, a₂}}
+                  : by refl
           ... = {{b₁}, {b₁, b₂}}
-                  : by {congr, from ‹a₂ = b₂›, repeat {from ‹a₁ = b₁›}}
+                  : by {congr,
+                        -- Only need this proposition once
+                        from ‹a₂ = b₂›,
+                        -- But we need this one twice
+                        repeat {from ‹a₁ = b₁›}}
           ... = B : by refl
     end
 
