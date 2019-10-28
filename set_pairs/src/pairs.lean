@@ -406,12 +406,30 @@ section
 
   parameters (α : Type u) (a₁ a₂ : α) (b₁ b₂ : α)
 
+  -- The set-theoretic encoding of ordered pairs
   def pair (x y : α) : set (set α) := {{x}, {x, y}}
 
+  -- Two arbitrary ordered pairs
   def A := pair a₁ a₂
   def B := pair b₁ b₂
 
-  -- We will need the following collapsing lemma
+  -- Soundness
+  -- If the elements are (pairwise) equal, then the ordered pairs are equal.
+  theorem soundness :
+    a₁ = b₁ ∧ a₂ = b₂ → A = B
+  :=
+    begin
+      assume : a₁ = b₁ ∧ a₂ = b₂,
+      have : a₁ = b₁, by {apply and.elim_left, assumption},
+      have : a₂ = b₂, by {apply and.elim_right, assumption},
+      calc
+        A     = {{a₁}, {a₁, a₂}} : by refl
+          ... = {{b₁}, {b₁, b₂}}
+                  : by {congr, from ‹a₂ = b₂›, repeat {from ‹a₁ = b₁›}}
+          ... = B : by refl
+    end
+
+  -- For adequcy, we will need the following collapsing lemma
   lemma collapse
     { x y : α } : x = y → ({{x}, {x, y}} : set (set α)) = {{y}}
   :=
@@ -429,6 +447,8 @@ section
           ... = {{y}} : by apply duplicate_to_singleton,
     end
 
+  -- Adequacy
+  -- If the order pairs are equal, then the elements are (pairwise) equal.
   theorem adequacy :
     A = B → a₁ = b₁ ∧ a₂ = b₂
   :=
