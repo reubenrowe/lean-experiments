@@ -1,0 +1,11 @@
+[package]
+name = "lambda_calculus"
+version = "0.1"
+lean_version = "3.4.2"
+path = "src"
+
+[dependencies]
+mathlib = { 
+  git = "https://github.com/leanprover/mathlib",
+  rev = "58fc8301e8591b77d62e9548a8a89a57a958153a"
+}
