@@ -1,17 +1,19 @@
 import data.equiv.denumerable
-import data.equiv.encodable
-import data.finset
-import data.multiset
-
-import logic.embedding
 
 import tactic.split_ifs
+import tactic.suggest
 
 set_option trace.eqn_compiler.elim_match true
 set_option trace.check true
 set_option trace.simplify true
 set_option trace.simplify.rewrite true
+-- set_option trace.simp_lemmas true
 -- set_option trace.class_instances true
+
+-- set_option class.instance_max_depth 200
+
+local notation `‹` p `›` := 
+  (show p, by assumption)
 
 universe u
 
@@ -42,33 +44,110 @@ namespace lambda
 
   section
 
-    parameter { α : Type u }
+    parameters { α : Type u } [denumerable α] { αs : finset α }
 
-    parameter [denumerable α]
+    private 
+      def incl : α ↪ ℕ :=
+        function.embedding.mk encodable.encode encodable.encode_injective
 
-    /- For denumerable α, we can always pick a value that is fresh wrt some
-       finite set -/
-    def fresh_var : finset α → α := 
-      λ αs,
-        let encode : α → ℕ := encodable.encode in
-        let encode_inj : function.injective encode := 
-          encodable.encode_injective in
-        let embedding := function.embedding.mk encode encode_inj in
-        let codes := finset.map embedding αs in
-        let code := 
-          match finset.max codes with
-          | none :=  0
-          | some n := (n+1) end in
-        denumerable.of_nat α code
-
-    lemma freshness : ∀ (αs : finset α), fresh_var αs ∉ αs
-      :=
-        begin
-          assume αs : finset α,
-          sorry,
+    private
+      def codes := finset.map incl αs
+    
+    private
+      def code := 
+        match codes.max with
+        | none :=  0
+        | some n := (n+1)
         end
 
+    lemma lt_ne { m n : ℕ } (h : m < n) : m ≠ n
+      := 
+        begin
+          -- m ≠ n is shorthand for m = n → false
+          assume : m = n,
+          -- have : n < n,
+            -- by 
+            rw ‹m = n› at h,
+            -- from ‹m = n› ▸ ‹m < n›,
+          have : ¬ n < n,
+            by apply nat.lt_irrefl,
+          contradiction,
+          done
+        end
+
+    #print axioms lt_ne
+
+    private lemma new_code : ∀ c ∈ codes, c ≠ code
+      :=
+        begin
+          intros,
+          cases (finset.max_of_mem ‹c ∈ codes›) with m,
+
+          have : codes.max = some m, 
+            -- by assumption,
+            from ‹m ∈ codes.max›,
+
+          have : code = m + 1, by {
+            rw code,
+            rw ‹codes.max = some m›,
+            -- rw this,
+            refl,
+          },
+
+          have : c < code,
+            by calc
+              c ≤ m : by {apply finset.le_max_of_mem, repeat {assumption}}
+              ... < m + 1 : by apply nat.lt_succ_self
+              ... = code : by {symmetry, from ‹code = m + 1›},
+
+          apply lt_ne this,
+          done,
+        end
+
+    private lemma decode_in_codes
+        { n : ℕ } : ((denumerable.of_nat α n) ∈ αs) → (n ∈ codes)
+      := 
+        begin
+          intros,
+          rw codes,
+          rw ←denumerable.encode_of_nat n,
+          apply finset.mem_map_of_mem incl ‹denumerable.of_nat α n ∈ αs›,
+          done
+        end
+
+    #print axioms decode_in_codes
+
+    -- Now make αs an explicit parameter
+    parameter ( αs )
+
+    def fresh_var : α := 
+      denumerable.of_nat α code
+
+    lemma freshness : fresh_var ∉ αs :=
+      begin
+        -- Proof by contradition
+        assume : (fresh_var αs) ∈ αs,
+        have : (fresh_var αs) = denumerable.of_nat α code,
+          by refl,
+        have : (denumerable.of_nat α code) ∈ αs,
+          by rwa ←this,
+        have : (code ∈ codes),
+          by apply decode_in_codes this,
+        have : code ≠ code,
+          by apply new_code code this,
+        let code := @code α ‹denumerable α› αs,
+        have : code = code,
+          by refl,
+        contradiction,
+        done,
+      end
+
+    #print axioms freshness
+
   end
+
+  #check freshness
+  #print freshness
 
   section
 
@@ -132,6 +211,7 @@ namespace lambda
         case pre_term.var {
           rw rename,
           split_ifs,
+          -- both cases follow be the definition of sizeof
           repeat {repeat {rw sizeof}},
           done
         },
