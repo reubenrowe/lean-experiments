@@ -58,50 +58,49 @@ namespace lambda
 
     -- The type of syntactic Λ-terms
     inductive pre_term : Type (u + 1)
-    | var : α → pre_term
-    | app : pre_term → pre_term → pre_term
-    | lam : α → pre_term → pre_term
+      | var : α → pre_term
+      | app : pre_term → pre_term → pre_term
+      | lam : α → pre_term → pre_term
 
     open pre_term
 
     -- We don't care about the size of the variable type αN
     def sizeof : pre_term → ℕ
-    | (var z)   := 0
-    | (app t u) := 1 + (sizeof t) + (sizeof u)
-    | (lam x t) := 1 + (sizeof t)
+      | (var z)   := 0
+      | (app t u) := 1 + (sizeof t) + (sizeof u)
+      | (lam x t) := 1 + (sizeof t)
 
-    instance pre_term_has_sizeof : has_sizeof pre_term :=
-      has_sizeof.mk sizeof
+    instance pre_term_has_sizeof : has_sizeof pre_term
+      :=
+        has_sizeof.mk sizeof
 
     lemma size_zero_var { x : α } : sizeof (var x) = 0
       :=
         by rw sizeof
 
-    lemma size_pos_app
-      { t u : pre_term } : ¬ sizeof (app t u) ≤ 0
-    :=
-      begin
-        rw sizeof,
-        rw (show 1 + sizeof t + sizeof u = 1 + (sizeof t + sizeof u),
-              by apply nat.add_assoc),
-        generalize : sizeof t + sizeof u = n,
-        rw nat.add_comm,
-        rw (show n + 1 = nat.succ n, by refl),
-        apply nat.not_succ_le_zero n,
-        done
-      end
+    lemma size_pos_app { t u : pre_term } : ¬ sizeof (app t u) ≤ 0
+      :=
+        begin
+          rw sizeof,
+          rw (show 1 + sizeof t + sizeof u = 1 + (sizeof t + sizeof u),
+                by apply nat.add_assoc),
+          generalize : sizeof t + sizeof u = n,
+          rw nat.add_comm,
+          rw (show n + 1 = nat.succ n, by refl),
+          apply nat.not_succ_le_zero n,
+          done
+        end
 
-    lemma size_pos_lam
-      { x : α } { t : pre_term } : ¬ sizeof (lam x t) ≤ 0
-    :=
-      begin
-        rw sizeof,
-        generalize : sizeof t = n,
-        rw nat.add_comm,
-        rw (show n + 1 = nat.succ n, by refl),
-        apply nat.not_succ_le_zero n,
-        done
-      end
+    lemma size_pos_lam { x : α } { t : pre_term } : ¬ sizeof (lam x t) ≤ 0
+      :=
+        begin
+          rw sizeof,
+          generalize : sizeof t = n,
+          rw nat.add_comm,
+          rw (show n + 1 = nat.succ n, by refl),
+          apply nat.not_succ_le_zero n,
+          done
+        end
 
   end
 
@@ -109,15 +108,16 @@ namespace lambda
 
     parameters { α : Type u } [denumerable α] { αs : finset α }
 
-    private 
-      def incl : α ↪ ℕ :=
+    private def incl : α ↪ ℕ
+      :=
         function.embedding.mk encodable.encode encodable.encode_injective
 
-    private
-      def codes := finset.map incl αs
+    private def codes : finset ℕ
+      :=
+        finset.map incl αs
     
-    private
-      def fresh_code := 
+    private def fresh_code : ℕ 
+      := 
         match codes.max with
         | none :=  0
         | some n := (n+1)
@@ -168,28 +168,30 @@ namespace lambda
     -- Now make αs an explicit parameter
     parameter ( αs )
 
-    def fresh_var : α := 
-      denumerable.of_nat α fresh_code
+    def fresh_var : α
+      := 
+        denumerable.of_nat α fresh_code
 
-    lemma freshness : fresh_var ∉ αs :=
-      begin
-        -- Proof by contradition
-        assume : (fresh_var αs) ∈ αs,
-        have : fresh_code ≠ fresh_code,
-          by {
-            apply new_code fresh_code,
-              -- suffices to show fresh_code ∈ codes
-            apply decode_in_codes,
-              -- suffices to show denumerable.of_nat α (fresh_code) ∈ αs
-            rw ←fresh_var,
-              -- suffices to show fresh_var ∈ αs
-            assumption,
-              -- which holds by assumption
-          },
-        -- contradiction,
-        from ne.irrefl this,
-        done,
-      end
+    lemma freshness : fresh_var ∉ αs
+      :=
+        begin
+          -- Proof by contradition
+          assume : (fresh_var αs) ∈ αs,
+          have : fresh_code ≠ fresh_code,
+            by {
+              apply new_code fresh_code,
+                -- suffices to show fresh_code ∈ codes
+              apply decode_in_codes,
+                -- suffices to show denumerable.of_nat α (fresh_code) ∈ αs
+              rw ←fresh_var,
+                -- suffices to show fresh_var ∈ αs
+              assumption,
+                -- which holds by assumption
+            },
+          -- contradiction,
+          from ne.irrefl this,
+          done,
+        end
 
     #print axioms freshness
 
@@ -202,7 +204,7 @@ namespace lambda
 
     parameter { α : Type u }
 
-    parameters 
+    parameters -- type classes
       [has_emptyc (finset α)]
       [has_union (finset α)]
       [has_sdiff (finset α)]
@@ -211,19 +213,19 @@ namespace lambda
     open pre_term
 
     def free_vars : pre_term → finset α
-    | (var x)   := finset.singleton x
-    | (app t u) := (free_vars t) ∪ (free_vars u)
-    | (lam x t) := (free_vars t) \ (finset.singleton x)
+      | (var x)   := finset.singleton x
+      | (app t u) := (free_vars t) ∪ (free_vars u)
+      | (lam x t) := (free_vars t) \ (finset.singleton x)
 
     def bound_vars : pre_term → finset α
-    | (var x)   := ∅
-    | (app t u) := (bound_vars t) ∪ (bound_vars u)
-    | (lam x t) := (bound_vars t) ∪ (finset.singleton x)
+      | (var x)   := ∅
+      | (app t u) := (bound_vars t) ∪ (bound_vars u)
+      | (lam x t) := (bound_vars t) ∪ (finset.singleton x)
 
     def bound_vars_mset : pre_term → multiset α
-    | (var x)   := x :: 0
-    | (app t u) := (bound_vars_mset t) ∪ (bound_vars_mset t)
-    | (lam x t) := x :: (bound_vars_mset t)
+      | (var x)   := x :: 0
+      | (app t u) := (bound_vars_mset t) ∪ (bound_vars_mset t)
+      | (lam x t) := x :: (bound_vars_mset t)
 
     -- The pre-term obeys Barendregt's convention
     def canonical (t : pre_term) : Prop
@@ -239,7 +241,7 @@ namespace lambda
 
     parameter { α : Type u }
 
-    parameters
+    parameters -- type classes
       [decidable_eq α]
       [denumerable α]
 
@@ -247,9 +249,9 @@ namespace lambda
 
     -- Renaming a free variable
     def rename (x : α) (y : α) : @pre_term α → @pre_term α
-    | (var z)   := if z = x then (var y) else (var z)
-    | (app t u) := (app (rename t) (rename u))
-    | (lam z t) := if z = x then (lam z t) else (lam z (rename t))
+      | (var z)   := if z = x then (var y) else (var z)
+      | (app t u) := (app (rename t) (rename u))
+      | (lam z t) := if z = x then (lam z t) else (lam z (rename t))
 
     /- We need to show that the rename operation does not increase the size of
        pre-terms, so Lean knows our notion of capture-avoiding substitution
@@ -293,20 +295,20 @@ namespace lambda
 
     -- Capture avoiding substitution
     def subst (u : pre_term) (x : α) : @pre_term α → @pre_term α
-        | (var y)    := if x = y then u else (var y)
-        | (app t₁ t₂) := app (subst t₁) (subst t₂)
-        | (lam y t)  :=
-            if y = x
-              then (lam y t)
-              else
-                let z := fresh_var ((free_vars u) ∪ (free_vars t)) in
-                have sizeof (rename y z t) < 1 + sizeof t, 
-                  by calc
-                    sizeof (rename y z t)
-                        = sizeof t       : by apply rename_nonincreasing
-                    ... < (sizeof t) + 1 : by apply nat.lt.base
-                    ... = 1 + (sizeof t) : by apply nat.add_comm,
-                lam z (subst (rename y z t))
+      | (var y)    := if x = y then u else (var y)
+      | (app t₁ t₂) := app (subst t₁) (subst t₂)
+      | (lam y t)  :=
+          if y = x
+            then (lam y t)
+            else
+              let z := fresh_var ((free_vars u) ∪ (free_vars t)) in
+              have sizeof (rename y z t) < 1 + sizeof t, 
+                by calc
+                  sizeof (rename y z t)
+                      = sizeof t       : by apply rename_nonincreasing
+                  ... < (sizeof t) + 1 : by apply nat.lt.base
+                  ... = 1 + (sizeof t) : by apply nat.add_comm,
+              lam z (subst (rename y z t))
 
   end
 
@@ -323,21 +325,21 @@ namespace lambda
         open pre_term
 
         def equiv : @pre_term α → @pre_term α → Prop
-        | (var x) (var y) :=
-          x = y
-        | (app t₁ u₁) (app t₂ u₂) :=
-          (equiv t₁ t₂) ∧ (equiv u₁ u₂)
-        | (lam x t) (lam y u) := 
-          let z := fresh_var ((free_vars t) ∪ (free_vars u)) in
-          have sizeof (rename x z t) < 1 + sizeof t, 
-            by calc
-              sizeof (rename x z t)
-                  = sizeof t       : by apply rename_nonincreasing
-              ... < (sizeof t) + 1 : by apply nat.lt.base
-              ... = 1 + (sizeof t) : by apply nat.add_comm,
-          equiv (rename x z t) (rename y z u)
-        | _ _ :=
-          false
+          | (var x) (var y) :=
+            x = y
+          | (app t₁ u₁) (app t₂ u₂) :=
+            (equiv t₁ t₂) ∧ (equiv u₁ u₂)
+          | (lam x t) (lam y u) := 
+            let z := fresh_var ((free_vars t) ∪ (free_vars u)) in
+            have sizeof (rename x z t) < 1 + sizeof t, 
+              by calc
+                sizeof (rename x z t)
+                    = sizeof t       : by apply rename_nonincreasing
+                ... < (sizeof t) + 1 : by apply nat.lt.base
+                ... = 1 + (sizeof t) : by apply nat.add_comm,
+            equiv (rename x z t) (rename y z u)
+          | _ _ :=
+            false
 
         local notation t `≅` u := equiv t u
 
