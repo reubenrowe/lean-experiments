@@ -10,35 +10,98 @@ set_option trace.simplify.rewrite true
 -- set_option trace.simp_lemmas true
 -- set_option trace.class_instances true
 
--- set_option class.instance_max_depth 200
-
 local notation `‹` p `›` := 
   (show p, by assumption)
+
+lemma lt_ne { m n : ℕ } (h : m < n) : m ≠ n
+  := 
+    begin
+      -- m ≠ n is shorthand for m = n → false
+      assume : m = n,
+      -- have : n < n,
+        -- by 
+        rw ‹m = n› at h,
+        -- from ‹m = n› ▸ ‹m < n›,
+      have : ¬ n < n,
+        by apply nat.lt_irrefl,
+      contradiction,
+      done
+    end
+
+#check nat.less_than_or_equal.step
+
+lemma add_le_left (m n : ℕ) : m ≤ m + n
+  :=
+    begin
+      induction n with n' IH,
+      case nat.zero {
+        suffices : m ≤ m, by rw nat.add_zero,
+        refl,
+      },
+      case nat.succ {
+        calc
+          m    ≤ m + n' : by apply IH
+           ... ≤ m + n' + 1 : by {apply nat.less_than_or_equal.step, apply nat.less_than_or_equal.refl,},
+      },
+      done
+    end
+
+#print add_le_left
 
 universe u
 
 namespace lambda
 
-  -- The type of syntactic Λ-terms
-  inductive pre_term { α : Type u } : Type (u + 1)
-  | var : α → pre_term
-  | app : pre_term → pre_term → pre_term
-  | lam : α → pre_term → pre_term
-
-  open pre_term
-
   section
 
     parameter { α : Type u }
 
+    -- The type of syntactic Λ-terms
+    inductive pre_term : Type (u + 1)
+    | var : α → pre_term
+    | app : pre_term → pre_term → pre_term
+    | lam : α → pre_term → pre_term
+
+    open pre_term
+
     -- We don't care about the size of the variable type αN
-    def sizeof : @pre_term α → ℕ
+    def sizeof : pre_term → ℕ
     | (var z)   := 0
     | (app t u) := 1 + (sizeof t) + (sizeof u)
     | (lam x t) := 1 + (sizeof t)
 
     instance pre_term_has_sizeof : has_sizeof pre_term :=
       has_sizeof.mk sizeof
+
+    lemma size_zero_var { x : α } : sizeof (var x) = 0
+      :=
+        by rw sizeof
+
+    lemma size_pos_app
+      { t u : pre_term } : ¬ sizeof (app t u) ≤ 0
+    :=
+      begin
+        rw sizeof,
+        rw (show 1 + sizeof t + sizeof u = 1 + (sizeof t + sizeof u),
+              by apply nat.add_assoc),
+        generalize : sizeof t + sizeof u = n,
+        rw nat.add_comm,
+        rw (show n + 1 = nat.succ n, by refl),
+        apply nat.not_succ_le_zero n,
+        done
+      end
+
+    lemma size_pos_lam
+      { x : α } { t : pre_term } : ¬ sizeof (lam x t) ≤ 0
+    :=
+      begin
+        rw sizeof,
+        generalize : sizeof t = n,
+        rw nat.add_comm,
+        rw (show n + 1 = nat.succ n, by refl),
+        apply nat.not_succ_le_zero n,
+        done
+      end
 
   end
 
@@ -54,63 +117,48 @@ namespace lambda
       def codes := finset.map incl αs
     
     private
-      def code := 
+      def fresh_code := 
         match codes.max with
         | none :=  0
         | some n := (n+1)
         end
 
-    lemma lt_ne { m n : ℕ } (h : m < n) : m ≠ n
-      := 
-        begin
-          -- m ≠ n is shorthand for m = n → false
-          assume : m = n,
-          -- have : n < n,
-            -- by 
-            rw ‹m = n› at h,
-            -- from ‹m = n› ▸ ‹m < n›,
-          have : ¬ n < n,
-            by apply nat.lt_irrefl,
-          contradiction,
-          done
-        end
-
-    #print axioms lt_ne
-
-    private lemma new_code : ∀ c ∈ codes, c ≠ code
+    private lemma new_code : ∀ c ∈ codes, c ≠ fresh_code
       :=
         begin
           intros,
           cases (finset.max_of_mem ‹c ∈ codes›) with m,
 
           have : codes.max = some m, 
-            -- by assumption,
             from ‹m ∈ codes.max›,
 
-          have : code = m + 1, by {
-            rw code,
-            rw ‹codes.max = some m›,
-            -- rw this,
+          have : fresh_code = m + 1, by {
+            rw [fresh_code, ‹codes.max = some m›],
             refl,
           },
 
-          have : c < code,
+          have : c < fresh_code,
             by calc
-              c ≤ m : by {apply finset.le_max_of_mem, repeat {assumption}}
-              ... < m + 1 : by apply nat.lt_succ_self
-              ... = code : by {symmetry, from ‹code = m + 1›},
+              c    ≤ m
+                      : by { apply finset.le_max_of_mem, repeat {assumption} }
+               ... < m + 1
+                      : by { apply nat.lt_succ_self }
+               ... = fresh_code
+                      : by { symmetry, from ‹fresh_code = m + 1› },
 
-          apply lt_ne this,
+          apply lt_ne ‹c < fresh_code›,
           done,
         end
+
+    #print axioms finset.max_of_mem
+    #print axioms new_code
 
     private lemma decode_in_codes
         { n : ℕ } : ((denumerable.of_nat α n) ∈ αs) → (n ∈ codes)
       := 
         begin
           intros,
-          rw codes,
-          rw ←denumerable.encode_of_nat n,
+          rw [codes, ←denumerable.encode_of_nat n],
           apply finset.mem_map_of_mem incl ‹denumerable.of_nat α n ∈ αs›,
           done
         end
@@ -121,24 +169,25 @@ namespace lambda
     parameter ( αs )
 
     def fresh_var : α := 
-      denumerable.of_nat α code
+      denumerable.of_nat α fresh_code
 
     lemma freshness : fresh_var ∉ αs :=
       begin
         -- Proof by contradition
         assume : (fresh_var αs) ∈ αs,
-        have : (fresh_var αs) = denumerable.of_nat α code,
-          by refl,
-        have : (denumerable.of_nat α code) ∈ αs,
-          by rwa ←this,
-        have : (code ∈ codes),
-          by apply decode_in_codes this,
-        have : code ≠ code,
-          by apply new_code code this,
-        let code := @code α ‹denumerable α› αs,
-        have : code = code,
-          by refl,
-        contradiction,
+        have : fresh_code ≠ fresh_code,
+          by {
+            apply new_code fresh_code,
+              -- suffices to show fresh_code ∈ codes
+            apply decode_in_codes,
+              -- suffices to show denumerable.of_nat α (fresh_code) ∈ αs
+            rw ←fresh_var,
+              -- suffices to show fresh_var ∈ αs
+            assumption,
+              -- which holds by assumption
+          },
+        -- contradiction,
+        from ne.irrefl this,
         done,
       end
 
@@ -158,6 +207,8 @@ namespace lambda
       [has_union (finset α)]
       [has_sdiff (finset α)]
       [has_union (multiset α)]
+
+    open pre_term
 
     def free_vars : pre_term → finset α
     | (var x)   := finset.singleton x
@@ -191,6 +242,8 @@ namespace lambda
     parameters
       [decidable_eq α]
       [denumerable α]
+
+    open pre_term
 
     -- Renaming a free variable
     def rename (x : α) (y : α) : @pre_term α → @pre_term α
@@ -255,65 +308,167 @@ namespace lambda
                     ... = 1 + (sizeof t) : by apply nat.add_comm,
                 lam z (subst (rename y z t))
 
-    def alpha_equiv : @pre_term α → @pre_term α → Prop
-    | (pre_term.var x) (pre_term.var y) :=
-      x = y
-    | (pre_term.app t₁ u₁) (pre_term.app t₂ u₂) :=
-      (alpha_equiv t₁ t₂) ∧ (alpha_equiv u₁ u₂)
-    | (pre_term.lam x t) (pre_term.lam y u) := 
-      let z := fresh_var ((free_vars t) ∪ (free_vars u)) in
-      have sizeof (rename x z t) < 1 + sizeof t, 
-        by calc
-          sizeof (rename x z t)
-               = sizeof t       : by apply rename_nonincreasing
-           ... < (sizeof t) + 1 : by apply nat.lt.base
-           ... = 1 + (sizeof t) : by apply nat.add_comm,
-      alpha_equiv (rename x z t) (rename y z u)
-    | _ _ :=
-      false
-
-    local notation t `≅` u := alpha_equiv t u
-
-    -- α-equivalence really is an equivalence relation
-
-    lemma alpha_equiv_refl
-      : ∀ (t : pre_term), t ≅ t
-    :=
-      sorry
-
-    lemma alpha_equiv_symm
-      : ∀ (t u : pre_term), (t ≅ u) → (u ≅ t)
-    :=
-      sorry
-
-    lemma alpha_equiv_trans 
-      : ∀ (t u v : pre_term), (t ≅ u) ∧ (u ≅ v) → (t ≅ v)
-    :=
-      sorry
-
-    -- Moreover, α-equivalence is a congruence
-
-    lemma cong_app_left
-      : ∀ (t u v : pre_term), (t ≅ u) → ((app t u) ≅ (app t v))
-    :=
-      sorry
-
-    lemma cong_app_right
-      : ∀ (t u v : pre_term), (t ≅ u) → ((app t u) ≅ (app t v))
-    :=
-      sorry
-
-    lemma cong_lam
-      : ∀ (x : α) (t u : pre_term), (t ≅ u) → ((lam x t) ≅ (lam x u))
-    :=
-      sorry
-
-    -- The type of (α-equivalence classes of) Λ-terms
-    def term := quot alpha_equiv
-
-    -- We can now define β-reduction on terms (i.e. on α-equivalence classes)
-
   end
+
+  namespace equiv
+
+    namespace alpha
+
+      section
+
+        parameter { α : Type u }
+
+        parameters [denumerable α] [decidable_eq α]
+
+        open pre_term
+
+        def equiv : @pre_term α → @pre_term α → Prop
+        | (var x) (var y) :=
+          x = y
+        | (app t₁ u₁) (app t₂ u₂) :=
+          (equiv t₁ t₂) ∧ (equiv u₁ u₂)
+        | (lam x t) (lam y u) := 
+          let z := fresh_var ((free_vars t) ∪ (free_vars u)) in
+          have sizeof (rename x z t) < 1 + sizeof t, 
+            by calc
+              sizeof (rename x z t)
+                  = sizeof t       : by apply rename_nonincreasing
+              ... < (sizeof t) + 1 : by apply nat.lt.base
+              ... = 1 + (sizeof t) : by apply nat.add_comm,
+          equiv (rename x z t) (rename y z u)
+        | _ _ :=
+          false
+
+        local notation t `≅` u := equiv t u
+
+        -- α-equivalence really is an equivalence relation
+
+        lemma refl
+          : ∀ (t : pre_term), t ≅ t
+        :=
+          let aux (n : ℕ) : ∀ (t : pre_term), sizeof t ≤ n → (t ≅ t)
+            :=
+              begin
+                induction n with m IH,
+                case nat.zero {
+                  intros,
+                  cases t with x u₁ u₂ x u,
+                  case var {
+                    suffices : x = x, by rw equiv,
+                    refl,
+                  },
+                  case app {
+                    have : ¬ sizeof (app u₁ u₂) ≤ 0, 
+                      by apply size_pos_app,
+                    contradiction,
+                  },
+                  case lam {
+                    have : ¬ sizeof (lam x u) ≤ 0,
+                      by apply size_pos_lam,
+                    contradiction,
+                  },
+                },
+                case nat.succ {
+                  intros,
+                  cases t with x u₁ u₂ x u,
+                  case var {
+                    suffices : x = x, by rw equiv,
+                    refl,
+                  },
+                  case app {
+                    rw equiv,
+                    split,
+                    show equiv u₁ u₁, {
+                      apply IH u₁,
+                      apply nat.le_of_succ_le_succ,
+                      calc
+                        sizeof u₁ + 1
+                             = 1 + sizeof u₁            : by apply nat.add_comm
+                         ... ≤ 1 + sizeof u₁ + sizeof u₂ : by apply add_le_left
+                         ... = sizeof (app u₁ u₂)        : by rw sizeof
+                         ... ≤ m + 1                    : by assumption,
+                    },
+                    show equiv u₂ u₂, {
+                      apply IH u₂,
+                      apply nat.le_of_succ_le_succ,
+                      calc
+                        sizeof u₂ + 1
+                             ≤ sizeof u₂ + 1 + sizeof u₁   : by apply add_le_left
+                         ... = sizeof u₂ + (1 + sizeof u₁) : by apply nat.add_assoc
+                         ... = 1 + sizeof u₁ + sizeof u₂   : by apply nat.add_comm
+                         ... = sizeof (app u₁ u₂)          : by rw sizeof
+                         ... ≤ m + 1                      : by assumption,
+                    },
+                  },
+                  case lam {
+                    rw equiv,
+                    rw finset.union_idempotent,
+
+                    change 
+                      equiv 
+                        (rename x (fresh_var (free_vars u)) u)
+                        (rename x (fresh_var (free_vars u)) u),
+
+                    apply IH (rename x (fresh_var (free_vars u)) u),
+                    apply nat.le_of_succ_le_succ,
+
+                    calc
+                      sizeof (rename x (fresh_var (free_vars u)) u) + 1
+                           = sizeof u + 1 : by rw rename_nonincreasing
+                       ... = 1 + sizeof u : by apply nat.add_comm
+                       ... = sizeof (lam x u) : by rw sizeof
+                       ... ≤ m + 1 : by assumption,
+                  },
+                },
+                done
+                end
+          in begin
+            assume t : pre_term,
+            suffices : sizeof t ≤ sizeof t,
+              { from aux (sizeof t) t this },
+            show sizeof t ≤ sizeof t, by refl,
+            done
+          end
+
+        #print refl
+
+        lemma symm
+          : ∀ (t u : pre_term), (t ≅ u) → (u ≅ t)
+        :=
+          sorry
+
+        lemma trans 
+          : ∀ (t u v : pre_term), (t ≅ u) ∧ (u ≅ v) → (t ≅ v)
+        :=
+          sorry
+
+        -- Moreover, α-equivalence is a congruence
+
+        lemma cong_app_left
+          : ∀ (t u v : pre_term), (t ≅ u) → ((app t u) ≅ (app t v))
+        :=
+          sorry
+
+        lemma cong_app_right
+          : ∀ (t u v : pre_term), (t ≅ u) → ((app t u) ≅ (app t v))
+        :=
+          sorry
+
+        lemma cong_lam
+          : ∀ (x : α) (t u : pre_term), (t ≅ u) → ((lam x t) ≅ (lam x u))
+        :=
+          sorry
+
+      end
+
+    end alpha
+
+  end equiv
+
+  -- The type of (α-equivalence classes of) Λ-terms
+  def term
+    { α : Type u } [denumerable α] [decidable_eq α]
+      := @quot (@pre_term α) equiv.alpha.equiv
 
   open pre_term
 
