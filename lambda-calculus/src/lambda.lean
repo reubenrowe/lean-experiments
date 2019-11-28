@@ -13,41 +13,6 @@ set_option trace.simplify.rewrite true
 local notation `‹` p `›` := 
   (show p, by assumption)
 
-lemma lt_ne { m n : ℕ } (h : m < n) : m ≠ n
-  := 
-    begin
-      -- m ≠ n is shorthand for m = n → false
-      assume : m = n,
-      -- have : n < n,
-        -- by 
-        rw ‹m = n› at h,
-        -- from ‹m = n› ▸ ‹m < n›,
-      have : ¬ n < n,
-        by apply nat.lt_irrefl,
-      contradiction,
-      done
-    end
-
-#check nat.less_than_or_equal.step
-
-lemma add_le_left (m n : ℕ) : m ≤ m + n
-  :=
-    begin
-      induction n with n' IH,
-      case nat.zero {
-        suffices : m ≤ m, by rw nat.add_zero,
-        refl,
-      },
-      case nat.succ {
-        calc
-          m    ≤ m + n' : by apply IH
-           ... ≤ m + n' + 1 : by {apply nat.less_than_or_equal.step, apply nat.less_than_or_equal.refl,},
-      },
-      done
-    end
-
-#print add_le_left
-
 universe u
 
 namespace lambda
@@ -102,6 +67,49 @@ namespace lambda
           done
         end
 
+    lemma size_of_size_app_left 
+      { n : ℕ } { t u : pre_term } : (sizeof (app t u) ≤ n + 1) → (sizeof t ≤ n)
+    :=
+      begin
+        intro,
+        apply nat.le_of_succ_le_succ,
+        calc
+          sizeof t + 1
+              = 1 + sizeof t            : by apply nat.add_comm
+          ... ≤ 1 + sizeof t + sizeof u : nat.le.intro rfl
+          ... = sizeof (app t u)        : by rw sizeof
+          ... ≤ n + 1                    : by assumption,
+      end
+
+    lemma size_of_size_app_right
+      { n : ℕ } { t u : pre_term } : (sizeof (app t u) ≤ n + 1) → (sizeof u ≤ n)
+    :=
+      begin
+        intro,
+        apply nat.le_of_succ_le_succ,
+        calc
+          sizeof u + 1
+              ≤ sizeof u + 1 + sizeof t   : nat.le.intro rfl
+          ... = sizeof u + (1 + sizeof t) : by apply nat.add_assoc
+          ... = 1 + sizeof t + sizeof u   : by apply nat.add_comm
+          ... = sizeof (app t u)          : by rw sizeof
+          ... ≤ n + 1                      : by assumption,
+      end
+
+    lemma size_of_size_lam
+      { n : ℕ } { x : α } { t : pre_term }
+        : (sizeof (lam x t) ≤ n + 1) → (sizeof t ≤ n)
+    :=
+      begin
+        intro,
+        apply nat.le_of_succ_le_succ,
+        calc
+          sizeof t + 1
+              = 1 + sizeof t : by apply nat.add_comm
+          ... = sizeof (lam x t) : by rw sizeof
+          ... ≤ n + 1 : by assumption,
+      end
+
   end
 
   section
@@ -146,7 +154,7 @@ namespace lambda
                ... = fresh_code
                       : by { symmetry, from ‹fresh_code = m + 1› },
 
-          apply lt_ne ‹c < fresh_code›,
+          apply ne_of_lt ‹c < fresh_code›,
           done,
         end
 
@@ -345,108 +353,156 @@ namespace lambda
 
         -- α-equivalence really is an equivalence relation
 
-        lemma refl
-          : ∀ (t : pre_term), t ≅ t
-        :=
-          let aux (n : ℕ) : ∀ (t : pre_term), sizeof t ≤ n → (t ≅ t)
-            :=
-              begin
-                induction n with m IH,
-                case nat.zero {
-                  intros,
-                  cases t with x u₁ u₂ x u,
-                  case var {
-                    suffices : x = x, by rw equiv,
-                    refl,
+        lemma refl : ∀ (t : pre_term), t ≅ t
+          :=
+            let aux (n : ℕ) : ∀ (t : pre_term), sizeof t ≤ n → (t ≅ t)
+              :=
+                begin
+                  induction n with m IH,
+                  case nat.zero {
+                    intros,
+                    cases t with x u₁ u₂ x u,
+                    case var { rw equiv },
+                    case app { exfalso, from size_pos_app ‹sizeof (app u₁ u₂) ≤ 0› },
+                    case lam { exfalso, from size_pos_lam ‹sizeof (lam x u) ≤ 0› },
                   },
-                  case app {
-                    have : ¬ sizeof (app u₁ u₂) ≤ 0, 
-                      by apply size_pos_app,
-                    contradiction,
-                  },
-                  case lam {
-                    have : ¬ sizeof (lam x u) ≤ 0,
-                      by apply size_pos_lam,
-                    contradiction,
-                  },
-                },
-                case nat.succ {
-                  intros,
-                  cases t with x u₁ u₂ x u,
-                  case var {
-                    suffices : x = x, by rw equiv,
-                    refl,
-                  },
-                  case app {
-                    rw equiv,
-                    split,
-                    show equiv u₁ u₁, {
-                      apply IH u₁,
-                      apply nat.le_of_succ_le_succ,
-                      calc
-                        sizeof u₁ + 1
-                             = 1 + sizeof u₁            : by apply nat.add_comm
-                         ... ≤ 1 + sizeof u₁ + sizeof u₂ : by apply add_le_left
-                         ... = sizeof (app u₁ u₂)        : by rw sizeof
-                         ... ≤ m + 1                    : by assumption,
+                  case nat.succ {
+                    intros,
+                    cases t with x u₁ u₂ x u,
+                    case var { rw equiv },
+                    case app {
+                      rw equiv,
+                      split,
+                      show equiv u₁ u₁, {
+                        apply IH u₁,
+                        apply size_of_size_app_left,
+                        assumption,
+                      },
+                      show equiv u₂ u₂, {
+                        apply IH u₂,
+                        apply size_of_size_app_right,
+                        assumption,
+                      },
                     },
-                    show equiv u₂ u₂, {
-                      apply IH u₂,
-                      apply nat.le_of_succ_le_succ,
-                      calc
-                        sizeof u₂ + 1
-                             ≤ sizeof u₂ + 1 + sizeof u₁   : by apply add_le_left
-                         ... = sizeof u₂ + (1 + sizeof u₁) : by apply nat.add_assoc
-                         ... = 1 + sizeof u₁ + sizeof u₂   : by apply nat.add_comm
-                         ... = sizeof (app u₁ u₂)          : by rw sizeof
-                         ... ≤ m + 1                      : by assumption,
+                    case lam {
+                      rw equiv,
+                      rw finset.union_idempotent,
+                      delta,
+                      apply IH (rename x (fresh_var (free_vars u)) u),
+                      apply @size_of_size_lam α m x,
+                      rw sizeof at *,
+                      rw rename_nonincreasing,
+                      assumption,
                     },
                   },
-                  case lam {
-                    rw equiv,
-                    rw finset.union_idempotent,
-
-                    change 
-                      equiv 
-                        (rename x (fresh_var (free_vars u)) u)
-                        (rename x (fresh_var (free_vars u)) u),
-
-                    apply IH (rename x (fresh_var (free_vars u)) u),
-                    apply nat.le_of_succ_le_succ,
-
-                    calc
-                      sizeof (rename x (fresh_var (free_vars u)) u) + 1
-                           = sizeof u + 1 : by rw rename_nonincreasing
-                       ... = 1 + sizeof u : by apply nat.add_comm
-                       ... = sizeof (lam x u) : by rw sizeof
-                       ... ≤ m + 1 : by assumption,
-                  },
-                },
-                done
+                  done,
                 end
-          in begin
-            assume t : pre_term,
-            suffices : sizeof t ≤ sizeof t,
-              { from aux (sizeof t) t this },
-            show sizeof t ≤ sizeof t, by refl,
-            done
-          end
+            in begin
+              assume t : pre_term,
+              suffices : sizeof t ≤ sizeof t,
+                { from aux (sizeof t) t this },
+              show sizeof t ≤ sizeof t, by refl,
+              done
+            end
 
-        #print refl
+        lemma symm : ∀ (t u : pre_term), (t ≅ u) → (u ≅ t)
+          :=
+            let aux
+              (n : ℕ) : 
+                ∀ (t u : pre_term) { h₁ : sizeof t ≤ n } { h₂ : sizeof u ≤ n },
+                  (t ≅ u) → (u ≅ t)
+              :=
+                begin
+                  induction n with m IH,
+                  case nat.zero {
+                    intros,
+                    cases t with x t₁ t₂ x t',
+                    case var {
+                      cases u with y u₁ u₂ y u',
+                      case var { rw equiv at *, symmetry, assumption },
+                      case app { exfalso, from size_pos_app ‹sizeof (app u₁ u₂) ≤ 0› },
+                      case lam { exfalso, from size_pos_lam ‹sizeof (lam y u') ≤ 0› },
+                    },
+                    case app { exfalso, from size_pos_app ‹sizeof (app t₁ t₂) ≤ 0› },
+                    case lam { exfalso, from size_pos_lam ‹sizeof (lam x t') ≤ 0› },
+                  },
+                  case nat.succ {
+                    intros,
+                    cases t with _ t₁ t₂ x t',
+                    case var {
+                      cases u,
+                      case var { rw equiv at *, symmetry, assumption },
+                      case app { rwa equiv at * },
+                      case lam { rwa equiv at * },
+                    },
+                    case app {
+                      cases u with _ u₁ u₂,
+                      case app { 
+                        rw equiv at *,
+                        split,
+                        show equiv u₁ t₁,
+                          by { 
+                            apply IH t₁ u₁,
+                            show equiv t₁ u₁, by {apply and.elim_left, assumption},
+                            show sizeof t₁ ≤ m, by {apply size_of_size_app_left, assumption},
+                            show sizeof u₁ ≤ m, by {apply size_of_size_app_left, assumption},
+                          },
+                        show equiv u₂ t₂,
+                          by { 
+                            apply IH t₂ u₂,
+                            show equiv t₂ u₂, by {apply and.elim_right, assumption},
+                            show sizeof t₂ ≤ m, by {apply size_of_size_app_right, assumption},
+                            show sizeof u₂ ≤ m, by {apply size_of_size_app_right, assumption},
+                          },
+                        },
+                      case var { rwa equiv at * },
+                      case lam { rwa equiv at * },
+                    },
+                    case lam {
+                      cases u with _ _ _ y u',
+                      case lam {
+                        rw equiv at *,
+                        delta at a ⊢,
+                        apply IH,
+                        show sizeof (rename x (fresh_var (free_vars u' ∪ free_vars t')) t') ≤ m,
+                          by {
+                            rw rename_nonincreasing, 
+                            apply size_of_size_lam,
+                            assumption,
+                          },
+                        show sizeof (rename y (fresh_var (free_vars u' ∪ free_vars t')) u') ≤ m,
+                          by {
+                            rw rename_nonincreasing, 
+                            apply size_of_size_lam,
+                            assumption,
+                          },
+                        show
+                          equiv
+                            (rename x (fresh_var (free_vars u' ∪ free_vars t')) t')
+                            (rename y (fresh_var (free_vars u' ∪ free_vars t')) u'),
+                          by {rw finset.union_comm, assumption},
+                      },
+                      case var { rwa equiv at * },
+                      case app { rwa equiv at * },
+                    },
+                  },
+                  done,
+                end
+            in begin
+              intros,
+              apply aux (max (sizeof t) (sizeof u)) t u ‹equiv t u›,
+              apply le_max_left,
+              apply le_max_right,
+              done
+            end
 
-        lemma symm
-          : ∀ (t u : pre_term), (t ≅ u) → (u ≅ t)
-        :=
-          sorry
-
-        lemma trans 
-          : ∀ (t u v : pre_term), (t ≅ u) ∧ (u ≅ v) → (t ≅ v)
+        lemma trans : ∀ (t u v : pre_term), (t ≅ u) ∧ (u ≅ v) → (t ≅ v)
         :=
           sorry
 
         -- Moreover, α-equivalence is a congruence
 
-        lemma cong_app_left
+        lemma cong_app_left 
           : ∀ (t u v : pre_term), (t ≅ u) → ((app t u) ≅ (app t v))
         :=
           sorry
