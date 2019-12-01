@@ -274,8 +274,10 @@ namespace lambda
         case pre_term.var {
           rw rename,
           split_ifs,
-          -- both cases follow be the definition of sizeof
-          repeat {repeat {rw sizeof}},
+          show sizeof (var y) = sizeof (var t),
+            by unfold sizeof,
+          show sizeof (var t) = sizeof (var t),
+            by unfold sizeof,
           done
         },
         case pre_term.app {
@@ -299,6 +301,14 @@ namespace lambda
             },
         },
         done,
+      end
+
+    lemma rename_footprint
+      { x y : α } { t : pre_term } : 
+        (free_vars t \ {x}) = (free_vars (rename x y t) \ {y})
+    :=
+      begin
+        sorry
       end
 
     -- Capture avoiding substitution
@@ -338,24 +348,128 @@ namespace lambda
           | (app t₁ u₁) (app t₂ u₂) :=
             (equiv t₁ t₂) ∧ (equiv u₁ u₂)
           | (lam x t) (lam y u) := 
-            let z := fresh_var ((free_vars t) ∪ (free_vars u)) in
-            have sizeof (rename x z t) < 1 + sizeof t, 
-              by calc
-                sizeof (rename x z t)
-                    = sizeof t       : by apply rename_nonincreasing
-                ... < (sizeof t) + 1 : by apply nat.lt.base
-                ... = 1 + (sizeof t) : by apply nat.add_comm,
-            equiv (rename x z t) (rename y z u)
+            ∀ z ∉ (free_vars t \ { x }) ∪ (free_vars u \ { y }),
+              have sizeof (rename x z t) < 1 + sizeof t, 
+                by calc
+                  sizeof (rename x z t)
+                      = sizeof t       : by apply rename_nonincreasing
+                  ... < (sizeof t) + 1 : by apply nat.lt.base
+                  ... = 1 + (sizeof t) : by apply nat.add_comm,
+              equiv (rename x z t) (rename y z u)
           | _ _ :=
             false
 
-        local notation t `≅` u := equiv t u
+        local notation t ` ≅ ` u := equiv t u
+
+        lemma preserves_fv :
+          ∀ { t u : pre_term }, (t ≅ u) → free_vars t = free_vars u
+        :=
+          let aux
+            { n : ℕ } :
+              ∀ { t u : pre_term } { _ : sizeof t ≤ n} { _ : sizeof u ≤ n },
+                (t ≅ u) → free_vars t = free_vars u
+            :=
+              begin
+                induction n with m IH,
+                case nat.zero {
+                  intros,
+                  cases t with x,
+                  case var {
+                    cases u with y,
+                    case var { 
+                      rw equiv at *,
+                      unfold free_vars, 
+                      rwa finset.singleton_inj,
+                    },
+                    case app { exfalso, from size_pos_app ‹sizeof (app _ _) ≤ 0› },
+                    case lam { exfalso, from size_pos_lam ‹sizeof (lam _ _) ≤ 0› },
+                  },
+                  case app { exfalso, from size_pos_app ‹sizeof (app _ _) ≤ 0› },
+                  case lam { exfalso, from size_pos_lam ‹sizeof (lam _ _) ≤ 0› },
+                },
+                case nat.succ {
+                  assume t u : pre_term,
+                  assume : sizeof t ≤ m + 1, assume : sizeof u ≤ m + 1,
+                  assume equiv_t_u : equiv t u,
+                  cases t with _ t₁ t₂ x t',
+                  case var {
+                    cases u with y,
+                    case var { 
+                      rw equiv at *,
+                      unfold free_vars,
+                      rwa finset.singleton_inj,
+                    },
+                    case app { rw equiv at *, contradiction, },
+                    case lam { rw equiv at *, contradiction, },
+                  },
+                  case app { 
+                    cases u with _ u₁ u₂,
+                    case app {
+                      rw equiv at *,
+                      unfold free_vars,
+                      rw (show free_vars t₁ = free_vars u₁, by { apply IH, 
+                            show equiv t₁ u₁,
+                              by { apply and.elim_left, assumption },
+                            show sizeof t₁ ≤ m,
+                              by {apply size_of_size_app_left, assumption},
+                            show sizeof u₁ ≤ m,
+                              by {apply size_of_size_app_left, assumption},
+                          }
+                        ),
+                      rw (show free_vars t₂ = free_vars u₂, by { apply IH, 
+                            show equiv t₂ u₂,
+                              by { apply and.elim_right, assumption },
+                            show sizeof t₂ ≤ m,
+                              by {apply size_of_size_app_right, assumption},
+                            show sizeof u₂ ≤ m,
+                              by {apply size_of_size_app_right, assumption},
+                          }
+                        ),
+                    },
+                    case var { rw equiv at *, contradiction, },
+                    case lam { rw equiv at *, contradiction, },
+                  },
+                  case lam { 
+                    cases u with _ _ _ y u',
+                    case lam {
+                      rw equiv at *,
+                      unfold free_vars,
+                      let z := fresh_var (free_vars t' \ {x} ∪ free_vars u' \ {y}),
+                      change free_vars t' \ {x} = free_vars u' \ {y},
+                      rw @rename_footprint α ‹decidable_eq α› ‹denumerable α› x z t',
+                      rw @rename_footprint α ‹decidable_eq α› ‹denumerable α› y z u',
+                      refine congr_fun (congr_arg _ _) _,
+                      apply IH,
+                        show equiv (rename x z t') (rename y z u'),
+                          from
+                            equiv_t_u z
+                              (freshness (free_vars t' \ {x} ∪ free_vars u' \ {y})),
+                        show sizeof (rename x z t') ≤ m,
+                          by {rw rename_nonincreasing, apply size_of_size_lam, assumption},
+                        show sizeof (rename y z u') ≤ m,
+                          by {rw rename_nonincreasing, apply size_of_size_lam, assumption},
+                    },
+                    case var { rw equiv at *, contradiction, },
+                    case app { rw equiv at *, contradiction, },
+                  },
+                },
+                done
+              end in
+          begin
+            intros,
+            apply aux ‹equiv t u›,
+              show sizeof t ≤ max (sizeof t) (sizeof u),
+                by { apply le_max_left },
+              show sizeof u ≤ max (sizeof t) (sizeof u),
+                by { apply le_max_right },
+            done
+          end
 
         -- α-equivalence really is an equivalence relation
 
         lemma refl : ∀ (t : pre_term), t ≅ t
           :=
-            let aux (n : ℕ) : ∀ (t : pre_term), sizeof t ≤ n → (t ≅ t)
+            let aux { n : ℕ } : ∀  { t : pre_term }, sizeof t ≤ n → (t ≅ t)
               :=
                 begin
                   induction n with m IH,
@@ -363,8 +477,10 @@ namespace lambda
                     intros,
                     cases t with x u₁ u₂ x u,
                     case var { rw equiv },
-                    case app { exfalso, from size_pos_app ‹sizeof (app u₁ u₂) ≤ 0› },
-                    case lam { exfalso, from size_pos_lam ‹sizeof (lam x u) ≤ 0› },
+                    case app { exfalso, 
+                      from size_pos_app ‹sizeof (app u₁ u₂) ≤ 0› },
+                    case lam { exfalso, 
+                      from size_pos_lam ‹sizeof (lam x u) ≤ 0› },
                   },
                   case nat.succ {
                     intros,
@@ -373,26 +489,23 @@ namespace lambda
                     case app {
                       rw equiv,
                       split,
-                      show equiv u₁ u₁, {
-                        apply IH u₁,
-                        apply size_of_size_app_left,
-                        assumption,
-                      },
-                      show equiv u₂ u₂, {
-                        apply IH u₂,
-                        apply size_of_size_app_right,
-                        assumption,
-                      },
+                      show equiv u₁ u₁, by { apply IH,
+                          apply size_of_size_app_left,
+                          assumption,
+                        },
+                      show equiv u₂ u₂, by { apply IH,
+                          apply size_of_size_app_right,
+                          assumption,
+                        },
                     },
                     case lam {
                       rw equiv,
                       rw finset.union_idempotent,
-                      delta,
-                      apply IH (rename x (fresh_var (free_vars u)) u),
+                      assume z ∉ free_vars u \ {x},
+                      apply IH,
                       apply @size_of_size_lam α m x,
                       rw sizeof at *,
-                      rw rename_nonincreasing,
-                      assumption,
+                      rwa rename_nonincreasing,
                     },
                   },
                   done,
@@ -400,7 +513,7 @@ namespace lambda
             in begin
               assume t : pre_term,
               suffices : sizeof t ≤ sizeof t,
-                { from aux (sizeof t) t this },
+                { from aux this },
               show sizeof t ≤ sizeof t, by refl,
               done
             end
@@ -408,23 +521,23 @@ namespace lambda
         lemma symm : ∀ (t u : pre_term), (t ≅ u) → (u ≅ t)
           :=
             let aux
-              (n : ℕ) : 
-                ∀ (t u : pre_term) { h₁ : sizeof t ≤ n } { h₂ : sizeof u ≤ n },
+              { n : ℕ } : 
+                ∀ { t u : pre_term } { _ : sizeof t ≤ n } { _ : sizeof u ≤ n },
                   (t ≅ u) → (u ≅ t)
               :=
                 begin
                   induction n with m IH,
                   case nat.zero {
                     intros,
-                    cases t with x t₁ t₂ x t',
+                    cases t with x,
                     case var {
-                      cases u with y u₁ u₂ y u',
+                      cases u with y,
                       case var { rw equiv at *, symmetry, assumption },
-                      case app { exfalso, from size_pos_app ‹sizeof (app u₁ u₂) ≤ 0› },
-                      case lam { exfalso, from size_pos_lam ‹sizeof (lam y u') ≤ 0› },
+                      case app { exfalso, from size_pos_app ‹sizeof (app _ _) ≤ 0› },
+                      case lam { exfalso, from size_pos_lam ‹sizeof (lam _ _) ≤ 0› },
                     },
-                    case app { exfalso, from size_pos_app ‹sizeof (app t₁ t₂) ≤ 0› },
-                    case lam { exfalso, from size_pos_lam ‹sizeof (lam x t') ≤ 0› },
+                    case app { exfalso, from size_pos_app ‹sizeof (app _ _) ≤ 0› },
+                    case lam { exfalso, from size_pos_lam ‹sizeof (lam _ _) ≤ 0› },
                   },
                   case nat.succ {
                     intros,
@@ -432,73 +545,206 @@ namespace lambda
                     case var {
                       cases u,
                       case var { rw equiv at *, symmetry, assumption },
-                      case app { rwa equiv at * },
-                      case lam { rwa equiv at * },
+                      all_goals { rwa equiv at * },
                     },
                     case app {
                       cases u with _ u₁ u₂,
                       case app { 
                         rw equiv at *,
                         split,
-                        show equiv u₁ t₁,
-                          by { 
-                            apply IH t₁ u₁,
-                            show equiv t₁ u₁, by {apply and.elim_left, assumption},
-                            show sizeof t₁ ≤ m, by {apply size_of_size_app_left, assumption},
-                            show sizeof u₁ ≤ m, by {apply size_of_size_app_left, assumption},
+                        show equiv u₁ t₁, by { apply IH,
+                            show equiv t₁ u₁,
+                              by {apply and.elim_left, assumption},
+                            show sizeof t₁ ≤ m,
+                              by {apply size_of_size_app_left, assumption},
+                            show sizeof u₁ ≤ m,
+                              by {apply size_of_size_app_left, assumption},
                           },
-                        show equiv u₂ t₂,
-                          by { 
-                            apply IH t₂ u₂,
+                        show equiv u₂ t₂, by { apply IH,
                             show equiv t₂ u₂, by {apply and.elim_right, assumption},
                             show sizeof t₂ ≤ m, by {apply size_of_size_app_right, assumption},
                             show sizeof u₂ ≤ m, by {apply size_of_size_app_right, assumption},
                           },
                         },
-                      case var { rwa equiv at * },
-                      case lam { rwa equiv at * },
+                      all_goals { rwa equiv at * },
                     },
                     case lam {
                       cases u with _ _ _ y u',
                       case lam {
                         rw equiv at *,
-                        delta at a ⊢,
+                        assume z ∉ free_vars u' \ {y} ∪ free_vars t' \ {x},
                         apply IH,
-                        show sizeof (rename x (fresh_var (free_vars u' ∪ free_vars t')) t') ≤ m,
-                          by {
-                            rw rename_nonincreasing, 
-                            apply size_of_size_lam,
-                            assumption,
-                          },
-                        show sizeof (rename y (fresh_var (free_vars u' ∪ free_vars t')) u') ≤ m,
-                          by {
-                            rw rename_nonincreasing, 
-                            apply size_of_size_lam,
-                            assumption,
-                          },
-                        show
-                          equiv
-                            (rename x (fresh_var (free_vars u' ∪ free_vars t')) t')
-                            (rename y (fresh_var (free_vars u' ∪ free_vars t')) u'),
-                          by {rw finset.union_comm, assumption},
+                          show equiv (rename x z t') (rename y z u'),
+                            from
+                              ‹∀ z ∉ free_vars t' \ {x} ∪ free_vars u' \ {y},
+                                  equiv
+                                    (@rename α ‹decidable_eq α› ‹denumerable α› x z t')
+                                    (rename y z u')› z
+                              (show z ∉ free_vars t' \ {x} ∪ free_vars u' \ {y},
+                                by rwa finset.union_comm),
+                          all_goals {
+                              rw rename_nonincreasing, 
+                              apply size_of_size_lam,
+                              assumption,
+                            },
                       },
-                      case var { rwa equiv at * },
-                      case app { rwa equiv at * },
+                      all_goals { rwa equiv at * },
                     },
                   },
                   done,
                 end
             in begin
               intros,
-              apply aux (max (sizeof t) (sizeof u)) t u ‹equiv t u›,
-              apply le_max_left,
-              apply le_max_right,
+              apply aux ‹equiv t u›,
+                show sizeof t ≤ max (sizeof t) (sizeof u),
+                  by { apply le_max_left },
+                show sizeof u ≤ max (sizeof t) (sizeof u),
+                  by { apply le_max_right },
               done
             end
 
-        lemma trans : ∀ (t u v : pre_term), (t ≅ u) ∧ (u ≅ v) → (t ≅ v)
-        :=
-          sorry
+        lemma trans : ∀ (t u v : pre_term), (t ≅ u) → (u ≅ v) → (t ≅ v)
+          :=
+            let aux
+              { n : ℕ } : 
+                ∀ { t u v : pre_term } 
+                    { _ : sizeof t ≤ n } { _ : sizeof u ≤ n } { _ : sizeof v ≤ n },
+                      (t ≅ u) → (u ≅ v) → (t ≅ v)
+              :=
+                begin
+                  induction n with m IH,
+                  case nat.zero {
+                    intros,
+                    cases t with x,
+                    case var {
+                      cases u with y,
+                      case var {
+                        cases v with z,
+                        case var {
+                          rw equiv at *,
+                          apply eq.trans,
+                            show x = y, by assumption,
+                            show y = z, by assumption,
+                        },
+                        all_goals { rw equiv at *, contradiction, },
+                      },
+                      all_goals { rw equiv at *, contradiction, },
+                    },
+                    case app { exfalso,
+                      from size_pos_app ‹sizeof (app _ _ ) ≤ 0› },
+                    case lam { exfalso,
+                      from size_pos_lam ‹sizeof (lam _ _ ) ≤ 0› },
+                  },
+                  case nat.succ {
+                    intros,
+                    cases t with x t₁ t₂ x t',
+                    case var {
+                      cases u with y,
+                      case var {
+                        cases v with z,
+                        case var {
+                          rw equiv at *,
+                          apply eq.trans,
+                            show x = y, by assumption,
+                            show y = z, by assumption,
+                        },
+                        all_goals { rw equiv at *, contradiction, },
+                      },
+                      all_goals { rw equiv at *, contradiction, },
+                    },
+                    case app { 
+                      cases u with _ u₁ u₂,
+                      case app {
+                        cases v with _ v₁ v₂,
+                        case app {
+                          rw equiv at *,
+                          split,
+                          show equiv t₁ v₁, by { apply IH,
+                              show equiv t₁ u₁,
+                                by { apply and.elim_left, assumption },
+                              show equiv u₁ v₁,
+                                by { apply and.elim_left, assumption },
+                              show sizeof t₁ ≤ m,
+                                by {apply size_of_size_app_left, assumption},
+                              show sizeof u₁ ≤ m,
+                                by {apply size_of_size_app_left, assumption},
+                              show sizeof v₁ ≤ m,
+                                by {apply size_of_size_app_left, assumption},
+                            },
+                          show equiv t₂ v₂, by { apply IH,
+                              show equiv t₂ u₂,
+                                by { apply and.elim_right, assumption },
+                              show equiv u₂ v₂,
+                                by { apply and.elim_right, assumption },
+                              show sizeof t₂ ≤ m,
+                                by {apply size_of_size_app_right, assumption},
+                              show sizeof u₂ ≤ m,
+                                by {apply size_of_size_app_right, assumption},
+                              show sizeof v₂ ≤ m,
+                                by {apply size_of_size_app_right, assumption},
+                            },
+                        },
+                        all_goals { rw equiv at *, contradiction, },
+                      },
+                      all_goals { rw equiv at *, contradiction, },
+                    },
+                    case lam { 
+                      cases u with _ _ _ y u',
+                      case lam {
+                        cases v with _ _ _ z v',
+                        case lam {
+                          -- TODO : find a better way to present this
+                          have equiv_t_u : free_vars (lam x t') = free_vars (lam y u'),
+                            from preserves_fv ‹equiv (lam x t') (lam y u')›,
+                          have equiv_u_v : free_vars (lam y u') = free_vars (lam z v'),
+                            from preserves_fv ‹equiv (lam y u') (lam z v')›,
+                          rw equiv at *,
+                          assume w ∉ free_vars t' \ {x} ∪ free_vars v' \ {z},
+                          apply IH,
+                          have : w ∉ free_vars t' \ {x} ∪ free_vars u' \ {y},
+                            by rwa 
+                              (show free_vars u' \ {y} = free_vars v' \ {z},
+                                by {unfold free_vars at equiv_u_v, assumption,}),
+                          show equiv (rename x w t') (rename y w u'),
+                            from 
+                              ‹∀ (w : α),
+                                w ∉ free_vars t' \ {x} ∪ free_vars u' \ {y} → 
+                                equiv (rename x w t') (rename y w u')›
+                              w this,
+                          have : w ∉ free_vars u' \ {y} ∪ free_vars v' \ {z},
+                            by rwa← 
+                              (show free_vars t' \ {x} = free_vars u' \ {y},
+                                by {unfold free_vars at equiv_t_u, assumption,}),
+                          show equiv (rename y w u') (rename z w v'),
+                            from 
+                              ‹∀ (w : α),
+                                w ∉ free_vars u' \ {y} ∪ free_vars v' \ {z} → 
+                                equiv (rename y w u') (rename z w v')›
+                              w this,
+                          all_goals {
+                              rw rename_nonincreasing, 
+                              apply size_of_size_lam,
+                              assumption,
+                            },
+                        },
+                        all_goals { rw equiv at *, contradiction, },
+                      },
+                      all_goals { rw equiv at *, contradiction, },
+                    },
+                  },
+                  done
+                end
+            in begin
+              intros,
+              apply aux ‹equiv t u› ‹equiv u v›,
+                show sizeof t ≤ max (max (sizeof t) (sizeof u)) (sizeof v),
+                  by {apply le_max_left_of_le, apply le_max_left},
+                show sizeof u ≤ max (max (sizeof t) (sizeof u)) (sizeof v),
+                  by {apply le_max_left_of_le, apply le_max_right},
+                show sizeof v ≤ max (max (sizeof t) (sizeof u)) (sizeof v), 
+                  by apply le_max_right,
+              done
+            end
 
         -- Moreover, α-equivalence is a congruence
 
